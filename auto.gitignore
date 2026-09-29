@@ -1,0 +1,14 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+
+autoxlab.db
+
+data/chroma/
+
+artifacts/models/
+artifacts/reports/
+artifacts/plots/
+
+.ipynb_checkpoints/

@@ -1,0 +1,78 @@
+{
+    "input_file": "C:/Users/91949/Desktop/Arduino IDE/diabetes_risk.csv",
+    "target_column": "diabetes_risk",
+    "task_type": "classification",
+    "original_shape": [
+        15000,
+        19
+    ],
+    "final_shape": [
+        15000,
+        19
+    ],
+    "duplicates_removed": 0,
+    "empty_columns_removed": [],
+    "missing_value_handling": {
+        "smoking_status": "Filled with mode Never",
+        "alcohol_consumption": "Filled with mode Never",
+        "income_bracket": "Filled with mode Middle"
+    },
+    "infinite_value_columns": [],
+    "outlier_counts": {
+        "patient_id": 0,
+        "age": 3,
+        "bmi": 153,
+        "hours_sleep_per_night": 360,
+        "stress_level": 0,
+        "fasting_blood_sugar": 432,
+        "hba1c_level": 355,
+        "blood_pressure_systolic": 11,
+        "blood_pressure_diastolic": 213,
+        "waist_circumference_cm": 167
+    },
+    "remaining_missing_values": {},
+    "numeric_columns": [
+        "patient_id",
+        "age",
+        "bmi",
+        "hours_sleep_per_night",
+        "stress_level",
+        "fasting_blood_sugar",
+        "hba1c_level",
+        "blood_pressure_systolic",
+        "blood_pressure_diastolic",
+        "waist_circumference_cm"
+    ],
+    "categorical_columns": [
+        "gender",
+        "city",
+        "family_history_diabetes",
+        "physical_activity_level",
+        "diet_type",
+        "smoking_status",
+        "alcohol_consumption",
+        "income_bracket",
+        "diabetes_risk"
+    ],
+    "columns": [
+        "patient_id",
+        "age",
+        "gender",
+        "city",
+        "bmi",
+        "family_history_diabetes",
+        "physical_activity_level",
+        "diet_type",
+        "smoking_status",
+        "alcohol_consumption",
+        "hours_sleep_per_night",
+        "stress_level",
+        "fasting_blood_sugar",
+        "hba1c_level",
+        "blood_pressure_systolic",
+        "blood_pressure_diastolic",
+        "waist_circumference_cm",
+        "income_bracket",
+        "diabetes_risk"
+    ]
+}
