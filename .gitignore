@@ -1,0 +1,49 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Secrets
+.env
+*.env
+
+# Local database
+*.db
+*.sqlite
+*.sqlite3
+
+# Chroma database
+data/chroma/
+
+# Generated experiment runs
+runs/
+
+# Generated reports
+artifacts/reports/
+
+# Generated ML outputs
+data/processed/*.npy
+data/processed/*.joblib
+data/processed/*.html
+data/processed/*.pdf
+data/processed/*.png
+
+
+# Local/generated data
+data/
+
+# Jupyter temporary files
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

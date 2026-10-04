@@ -27,3 +27,7 @@ psycopg[binary]>=3.2
 chromadb>=0.5
 
 python-dotenv>=1.0
+
+langchain-openai
+langchain-google-genai
+langchain-anthropic

@@ -3,6 +3,7 @@ import joblib
 import numpy as np
 
 from typing import Any
+from core.llm.router import get_llm
 
 from sklearn.linear_model import (
     LogisticRegression,
@@ -547,6 +548,8 @@ class MLExperimentAgent:
                     "error": str(exc)
                 })
 
+
+
         # --------------------------------------------------------
         # CHECK WHETHER ANY MODEL WORKED
         # --------------------------------------------------------
@@ -674,46 +677,118 @@ class MLExperimentAgent:
                     )
             }
 
+       
+   # --------------------------------------------------------
+# GENERATE MODEL RECOMMENDATION
+# --------------------------------------------------------
+
+        if best_score >= 0.90:
+            recommendation = (
+        "The model achieved excellent performance "
+        "and may be suitable for further validation."
+    )
+
+        elif best_score >= 0.80:
+            recommendation = (
+        "The model achieved acceptable performance. "
+        "Validate it on additional unseen data before deployment."
+    )
+
+        else:
+            recommendation = (
+        "The model performance is below the required threshold. "
+        "Further experimentation is recommended."
+    )
+        # --------------------------------------------------------
+        # GENERATE AI ANALYSIS
+        # --------------------------------------------------------
+
+        llm_state = {
+            **state,
+            "best_model_name": best_model_name,
+            "best_score": float(best_score),
+            "metrics": metrics,
+            "recommendation": recommendation,
+        }
+       
+        try:
+           llm_analysis = generate_ai_analysis(llm_state)
+
+           print("=" * 60)
+           print("AI ANALYSIS GENERATED SUCCESSFULLY")
+           print(llm_analysis)
+           print("=" * 60)
+        except Exception as e:
+           print("=" * 60)
+           print("LLM ERROR:")
+           print(type(e).__name__)
+           print(str(e))
+           print("=" * 60)
+
+           llm_analysis = (
+                f"LLM analysis failed: "
+                f"{type(e).__name__}: {str(e)}"
+            )
         # --------------------------------------------------------
         # RETURN LANGGRAPH STATE UPDATE
         # --------------------------------------------------------
 
         return {
-
-            "model_results":
-                results,
-
-            "best_model_name":
-                best_model_name,
-
-            "best_score":
-                float(best_score),
-
-            "best_model_path":
-                best_model_path,
-
-            "metrics":
-                metrics,
-
-            "status":
-                "ml_experiment_completed",
-
+            "model_results": results,
+            "best_model_name": best_model_name,
+            "best_score": float(best_score),
+            "best_model_path": best_model_path,
+            "metrics": metrics,
+            "recommendation": recommendation,
+            "llm_analysis": llm_analysis,
+            "status": "ml_experiment_completed",
             "messages": [
-
-                f"Experiment "
-                f"{experiment_number} completed.",
-
-                f"Tested "
-                f"{len(models)} models.",
-
-                f"Best model: "
-                f"{best_model_name}",
-
-                f"Best score: "
-                f"{best_score:.4f}",
-
+                f"Experiment {experiment_number} completed.",
+                f"Tested {len(models)} models.",
+                f"Best model: {best_model_name}",
+                f"Best score: {best_score:.4f}",
                 "Best model saved successfully."
             ],
-
             "error": ""
-        }
+        }  
+
+        
+        
+# ===============================================
+#  LLM FUNCTION
+# ===============================================
+def generate_ai_analysis(state):
+    provider = state.get("llm_provider", "openai")
+
+    llm = get_llm(provider)
+
+    prompt = f"""
+You are an AI data science assistant.
+
+Analyze the results of this machine learning experiment.
+
+Problem type:
+{state.get("problem_type", "unknown")}
+
+Best model:
+{state.get("best_model_name", "unknown")}
+
+Best score:
+{state.get("best_score", 0.0)}
+
+Metrics:
+{state.get("metrics", {})}
+
+Recommendation:
+{state.get("recommendation", "")}
+
+Give a short, clear explanation of:
+1. Which model performed best
+2. How good the score is
+3. What the metrics mean
+4. Whether the model should be considered for further validation
+"""
+
+    response = llm.invoke(prompt)
+
+    return response.content

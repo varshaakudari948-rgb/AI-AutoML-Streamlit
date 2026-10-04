@@ -4,7 +4,7 @@ from graph.state import WorkflowState
 
 from agents.data_preparation.agent import DataPreparationAgent
 from agents.feature_engineering.agent import FeatureEngineeringAgent
-from agents.ml_experiment.agent import MLExperimentAgent
+from agents.ml_experiment.agent import MLExperimentAgent,generate_ai_analysis
 from agents.explainability.agent import ExplainabilityAgent
 from agents.database.agent import DatabaseAgent
 from agents.report_generation.agent import ReportGenerationAgent
@@ -79,23 +79,58 @@ def ml_experiment_node(state: WorkflowState) -> dict[str, Any]:
     try:
         print("\n[AutoXLab] ML Experiment Agent started")
 
+        # -----------------------------------------
+        # 1. Run normal ML experiment
+        # -----------------------------------------
         result = ml_agent.run(state)
 
+        # -----------------------------------------
+        # 2. Update state information for AI analysis
+        # -----------------------------------------
+        analysis_state = {
+            **state,
+            **result
+        }
+
+        # -----------------------------------------
+        # 3. Generate AI analysis safely
+        # -----------------------------------------
+        try:
+            llm_analysis = generate_ai_analysis(analysis_state)
+        except Exception as llm_error:
+            print(f"[AutoXLab] LLM analysis failed: {llm_error}")
+
+            llm_analysis = (
+                "AI analysis could not be generated. "
+                "The machine learning experiment itself completed successfully."
+            )
+
+        # -----------------------------------------
+        # 4. Experiment number
+        # -----------------------------------------
         current_experiment = state.get("experiment_number", 0)
 
+        # -----------------------------------------
+        # 5. Return LangGraph state update
+        # -----------------------------------------
         return {
             **result,
+
+            "llm_analysis": llm_analysis,
+
             "experiment_number": current_experiment + 1,
+
             "status": "experiment_completed"
         }
 
     except Exception as e:
 
+        print(f"[AutoXLab] ML experiment failed: {e}")
+
         return {
             "status": "error",
             "error": f"ML experiment failed: {str(e)}"
         }
-
 
 # ============================================================
 # EXPLAINABILITY NODE

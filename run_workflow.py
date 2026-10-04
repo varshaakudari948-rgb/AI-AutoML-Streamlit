@@ -8,6 +8,8 @@ from graph.workflow import graph
 # ============================================================
 
 initial_state = {
+    
+    "llm_provider": "openai",
 
     "dataset_path":
         "data/raw/dataset.csv",
@@ -32,6 +34,7 @@ initial_state = {
 
     "run_id":
         str(uuid.uuid4())
+
 }
 
 

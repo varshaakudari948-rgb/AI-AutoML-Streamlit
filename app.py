@@ -20,6 +20,7 @@ st.set_page_config(
 )
 
 
+
 # ============================================================
 # CSS
 # ============================================================
@@ -76,6 +77,10 @@ uploaded_file = st.sidebar.file_uploader(
     type=["csv", "xlsx", "xls"]
 )
 
+llm_provider = st.sidebar.selectbox(
+    "AI Reasoning Model",
+    ["openai", "gemini", "claude"]
+)
 
 use_pca = st.sidebar.checkbox(
     "Enable dimensionality reduction",
@@ -285,6 +290,9 @@ if uploaded_file:
 
             "run_id":
                 run_id,
+            
+            "llm_provider":
+             llm_provider,
 
             "use_pca":
                 use_pca,
@@ -368,6 +376,18 @@ if uploaded_file:
 if "result" in st.session_state:
 
     result = st.session_state["result"]
+
+# ============================================================
+# AI ANALYSIS
+# ============================================================
+    st.subheader("🤖 AI Analysis")
+
+    llm_analysis = result.get("llm_analysis", "")
+
+    if llm_analysis:
+        st.info(llm_analysis)
+    else:
+        st.warning("No AI analysis was generated.")
 
 
     # ========================================================

@@ -27,6 +27,10 @@ class WorkflowState(TypedDict, total=False):
     duplicates_removed: int
     outliers_detected: int
 
+    llm_provider: str
+    llm_recommendation: str
+    llm_analysis: str
+
 
     # ========================================================
     # FEATURE ENGINEERING
