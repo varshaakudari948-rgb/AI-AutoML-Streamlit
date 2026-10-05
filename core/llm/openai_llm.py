@@ -1,8 +1,14 @@
 import os
 import streamlit as st
 
+from pathlib import Path
 from dotenv import load_dotenv
+
 from langchain_openai import ChatOpenAI
+
+# Load .env from project root
+env_path = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(env_path)
 
 # Load local environment variables
 load_dotenv("autox.env")

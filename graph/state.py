@@ -31,6 +31,10 @@ class WorkflowState(TypedDict, total=False):
     llm_recommendation: str
     llm_analysis: str
 
+    y_test: list[Any]
+    predictions: list[Any]
+    prediction_preview: list[dict[str, Any]]
+
 
     # ========================================================
     # FEATURE ENGINEERING
