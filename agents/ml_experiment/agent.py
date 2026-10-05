@@ -1,8 +1,10 @@
 import os
 import joblib
 import numpy as np
+import matplotlib.pyplot as plt
 
 from typing import Any
+
 from core.llm.router import get_llm
 
 from sklearn.linear_model import (
@@ -37,7 +39,8 @@ from sklearn.metrics import (
     roc_auc_score,
     r2_score,
     mean_absolute_error,
-    mean_squared_error
+    mean_squared_error,
+    confusion_matrix
 )
 
 from graph.state import WorkflowState
@@ -52,6 +55,7 @@ class MLExperimentAgent:
     - Select ML models
     - Train multiple models
     - Evaluate models
+    - Generate evaluation visualization
     - Compare model performance
     - Select best model
     - Save best model
@@ -191,7 +195,10 @@ class MLExperimentAgent:
     # MAIN AGENT
     # ============================================================
 
-    def run(self, state: WorkflowState) -> dict[str, Any]:
+    def run(
+        self,
+        state: WorkflowState
+    ) -> dict[str, Any]:
 
         print("\n" + "=" * 60)
         print("AUTOXLAB - ML EXPERIMENT AGENT")
@@ -548,8 +555,6 @@ class MLExperimentAgent:
                     "error": str(exc)
                 })
 
-
-
         # --------------------------------------------------------
         # CHECK WHETHER ANY MODEL WORKED
         # --------------------------------------------------------
@@ -596,6 +601,137 @@ class MLExperimentAgent:
         predictions = best_model.predict(
             X_test
         )
+
+        # ========================================================
+        # GENERATE EVALUATION IMAGE
+        # ========================================================
+
+        evaluation_image_path = os.path.join(
+            run_dir,
+            "evaluation.png"
+        )
+
+        print("\n" + "=" * 60)
+        print("GENERATING EVALUATION VISUALIZATION")
+        print("=" * 60)
+
+        try:
+
+            plt.figure(
+                figsize=(8, 6)
+            )
+
+            # ====================================================
+            # CLASSIFICATION
+            # ====================================================
+
+            if problem_type == "classification":
+
+                cm = confusion_matrix(
+                    y_test,
+                    predictions
+                )
+
+                plt.imshow(cm)
+
+                plt.title(
+                    f"Confusion Matrix - {best_model_name}"
+                )
+
+                plt.xlabel(
+                    "Predicted"
+                )
+
+                plt.ylabel(
+                    "Actual"
+                )
+
+                # Add numbers inside confusion matrix
+                for i in range(
+                    cm.shape[0]
+                ):
+
+                    for j in range(
+                        cm.shape[1]
+                    ):
+
+                        plt.text(
+                            j,
+                            i,
+                            str(cm[i, j]),
+                            ha="center",
+                            va="center"
+                        )
+
+                plt.colorbar()
+
+            # ====================================================
+            # REGRESSION
+            # ====================================================
+
+            else:
+
+                plt.scatter(
+                    y_test,
+                    predictions,
+                    alpha=0.7
+                )
+
+                # Perfect prediction line
+                minimum = min(
+                    np.min(y_test),
+                    np.min(predictions)
+                )
+
+                maximum = max(
+                    np.max(y_test),
+                    np.max(predictions)
+                )
+
+                plt.plot(
+                    [minimum, maximum],
+                    [minimum, maximum],
+                    linestyle="--"
+                )
+
+                plt.xlabel(
+                    "Actual Values"
+                )
+
+                plt.ylabel(
+                    "Predicted Values"
+                )
+
+                plt.title(
+                    f"Actual vs Predicted - {best_model_name}"
+                )
+
+            plt.tight_layout()
+
+            plt.savefig(
+                evaluation_image_path,
+                dpi=150,
+                bbox_inches="tight"
+            )
+
+            plt.close()
+
+            print(
+                f"Evaluation image saved to: "
+                f"{evaluation_image_path}"
+            )
+
+        except Exception as evaluation_error:
+
+            print(
+                "Evaluation image generation failed."
+            )
+
+            print(
+                f"Error: {evaluation_error}"
+            )
+
+            evaluation_image_path = ""
 
         # --------------------------------------------------------
         # FINAL METRICS
@@ -646,6 +782,35 @@ class MLExperimentAgent:
                     )
             }
 
+            # ROC-AUC for binary classification
+            if (
+                hasattr(
+                    best_model,
+                    "predict_proba"
+                )
+                and len(
+                    np.unique(y_test)
+                ) == 2
+            ):
+
+                try:
+
+                    probabilities = (
+                        best_model.predict_proba(
+                            X_test
+                        )
+                    )
+
+                    metrics["roc_auc"] = float(
+                        roc_auc_score(
+                            y_test,
+                            probabilities[:, 1]
+                        )
+                    )
+
+                except Exception:
+                    pass
+
         else:
 
             metrics = {
@@ -677,28 +842,31 @@ class MLExperimentAgent:
                     )
             }
 
-       
-   # --------------------------------------------------------
-# GENERATE MODEL RECOMMENDATION
-# --------------------------------------------------------
+        # --------------------------------------------------------
+        # GENERATE MODEL RECOMMENDATION
+        # --------------------------------------------------------
 
         if best_score >= 0.90:
+
             recommendation = (
-        "The model achieved excellent performance "
-        "and may be suitable for further validation."
-    )
+                "The model achieved excellent performance "
+                "and may be suitable for further validation."
+            )
 
         elif best_score >= 0.80:
+
             recommendation = (
-        "The model achieved acceptable performance. "
-        "Validate it on additional unseen data before deployment."
-    )
+                "The model achieved acceptable performance. "
+                "Validate it on additional unseen data before deployment."
+            )
 
         else:
+
             recommendation = (
-        "The model performance is below the required threshold. "
-        "Further experimentation is recommended."
-    )
+                "The model performance is below the required threshold. "
+                "Further experimentation is recommended."
+            )
+
         # --------------------------------------------------------
         # GENERATE AI ANALYSIS
         # --------------------------------------------------------
@@ -709,58 +877,112 @@ class MLExperimentAgent:
             "best_score": float(best_score),
             "metrics": metrics,
             "recommendation": recommendation,
+            "evaluation_image_path": evaluation_image_path
         }
-       
+
         try:
-           llm_analysis = generate_ai_analysis(llm_state)
 
-           print("=" * 60)
-           print("AI ANALYSIS GENERATED SUCCESSFULLY")
-           print(llm_analysis)
-           print("=" * 60)
+            llm_analysis = generate_ai_analysis(
+                llm_state
+            )
+
+            print("=" * 60)
+            print("AI ANALYSIS GENERATED SUCCESSFULLY")
+            print(llm_analysis)
+            print("=" * 60)
+
         except Exception as e:
-           print("=" * 60)
-           print("LLM ERROR:")
-           print(type(e).__name__)
-           print(str(e))
-           print("=" * 60)
 
-           llm_analysis = (
+            print("=" * 60)
+            print("LLM ERROR:")
+            print(type(e).__name__)
+            print(str(e))
+            print("=" * 60)
+
+            llm_analysis = (
                 f"LLM analysis failed: "
                 f"{type(e).__name__}: {str(e)}"
             )
+
         # --------------------------------------------------------
         # RETURN LANGGRAPH STATE UPDATE
         # --------------------------------------------------------
 
         return {
+
             "model_results": results,
-            "best_model_name": best_model_name,
-            "best_score": float(best_score),
-            "best_model_path": best_model_path,
-            "metrics": metrics,
-            "recommendation": recommendation,
-            "llm_analysis": llm_analysis,
-            "status": "ml_experiment_completed",
+
+            "best_model_name":
+                best_model_name,
+
+            "best_score":
+                float(best_score),
+
+            "best_model_path":
+                best_model_path,
+
+            # IMPORTANT:
+            # Evaluation image path is returned to WorkflowState
+            "evaluation_image_path":
+                evaluation_image_path,
+
+            # Extra names for compatibility with report generator
+            "evaluation_plot_path":
+                evaluation_image_path,
+
+            "evaluation_image":
+                evaluation_image_path,
+
+            "metrics":
+                metrics,
+
+            "recommendation":
+                recommendation,
+
+            "llm_analysis":
+                llm_analysis,
+
+            "status":
+                "ml_experiment_completed",
+
             "messages": [
+
                 f"Experiment {experiment_number} completed.",
+
                 f"Tested {len(models)} models.",
+
                 f"Best model: {best_model_name}",
+
                 f"Best score: {best_score:.4f}",
-                "Best model saved successfully."
+
+                "Best model saved successfully.",
+
+                (
+                    f"Evaluation image saved: "
+                    f"{evaluation_image_path}"
+                )
             ],
+
             "error": ""
-        }  
+        }
 
-        
-        
-# ===============================================
-#  LLM FUNCTION
-# ===============================================
-def generate_ai_analysis(state):
-    provider = state.get("llm_provider", "openai")
 
-    llm = get_llm(provider)
+# ===============================================================
+# LLM FUNCTION
+# ===============================================================
+
+def generate_ai_analysis(
+    state
+):
+
+    provider = state.get(
+        "llm_provider",
+        "openai"
+    )
+
+    llm = get_llm(
+        provider
+    )
 
     prompt = f"""
 You are an AI data science assistant.
@@ -783,12 +1005,15 @@ Recommendation:
 {state.get("recommendation", "")}
 
 Give a short, clear explanation of:
+
 1. Which model performed best
 2. How good the score is
 3. What the metrics mean
 4. Whether the model should be considered for further validation
 """
 
-    response = llm.invoke(prompt)
+    response = llm.invoke(
+        prompt
+    )
 
     return response.content
