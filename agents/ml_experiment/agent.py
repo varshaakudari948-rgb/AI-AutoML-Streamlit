@@ -61,10 +61,66 @@ class MLExperimentAgent:
     - Save best model
     - Return results to LangGraph state
     - Support repeated experiments
+    - Support retraining after human rejection
     """
 
     def __init__(self):
         pass
+
+    # ============================================================
+    # PREPARE RETRAINING AFTER HUMAN REJECTION
+    # ============================================================
+
+    def prepare_retraining(
+        self,
+        state: WorkflowState
+    ) -> dict[str, Any]:
+        """
+        Called by the human-approval/rejection node.
+
+        When a model is rejected:
+        1. Increase experiment number
+        2. Mark retraining as required
+        3. Clear old AI analysis
+        4. Tell LangGraph to route back to MLExperimentAgent
+        """
+
+        current_experiment = int(
+            state.get("experiment_number", 1) or 1
+        )
+
+        next_experiment = current_experiment + 1
+
+        print("\n" + "=" * 60)
+        print("MODEL REJECTED")
+        print("=" * 60)
+
+        print(
+            f"Current experiment: {current_experiment}"
+        )
+
+        print(
+            f"Starting retraining experiment: {next_experiment}"
+        )
+
+        return {
+            "experiment_number": next_experiment,
+
+            "approval_status": "rejected",
+
+            "retrain_required": True,
+
+            "retrain_reason":
+                "Previous model was rejected by human approval.",
+
+            "status": "retraining",
+
+            # Remove old AI analysis.
+            # A new analysis will be generated after retraining.
+            "llm_analysis": "",
+
+            "error": ""
+        }
 
     # ============================================================
     # MODEL SELECTION
@@ -76,9 +132,9 @@ class MLExperimentAgent:
         experiment_number: int
     ) -> dict[str, Any]:
 
-        # --------------------------------------------------------
+        # ========================================================
         # CLASSIFICATION
-        # --------------------------------------------------------
+        # ========================================================
 
         if problem_type == "classification":
 
@@ -93,14 +149,16 @@ class MLExperimentAgent:
                     RandomForestClassifier(
                         n_estimators=200,
                         random_state=42,
-                        class_weight="balanced"
+                        class_weight="balanced",
+                        n_jobs=-1
                     ),
 
                 "Extra Trees":
                     ExtraTreesClassifier(
                         n_estimators=200,
                         random_state=42,
-                        class_weight="balanced"
+                        class_weight="balanced",
+                        n_jobs=-1
                     ),
 
                 "Gradient Boosting":
@@ -120,32 +178,116 @@ class MLExperimentAgent:
                     )
             }
 
-            # ----------------------------------------------------
-            # SECOND EXPERIMENT
-            # Try stronger tree models
-            # ----------------------------------------------------
+            # ====================================================
+            # RETRAINING
+            # ====================================================
 
             if experiment_number > 1:
 
+                retrain_index = experiment_number - 1
+
+                # ------------------------------------------------
+                # RANDOM FOREST
+                # ------------------------------------------------
+
                 models["Random Forest"] = RandomForestClassifier(
-                    n_estimators=500,
-                    max_depth=None,
-                    min_samples_leaf=1,
-                    random_state=experiment_number,
-                    class_weight="balanced"
+                    n_estimators=
+                        500 + (100 * (retrain_index - 1)),
+
+                    max_depth=
+                        None
+                        if retrain_index % 2
+                        else 20,
+
+                    min_samples_leaf=
+                        1 + ((retrain_index - 1) % 3),
+
+                    random_state=
+                        100 + experiment_number,
+
+                    class_weight="balanced",
+
+                    n_jobs=-1
                 )
 
+                # ------------------------------------------------
+                # EXTRA TREES
+                # ------------------------------------------------
+
                 models["Extra Trees"] = ExtraTreesClassifier(
-                    n_estimators=500,
-                    random_state=experiment_number,
-                    class_weight="balanced"
+                    n_estimators=
+                        500 + (100 * (retrain_index - 1)),
+
+                    max_depth=
+                        None
+                        if retrain_index % 2
+                        else 20,
+
+                    min_samples_leaf=
+                        1 + ((retrain_index - 1) % 3),
+
+                    random_state=
+                        200 + experiment_number,
+
+                    class_weight="balanced",
+
+                    n_jobs=-1
+                )
+
+                # ------------------------------------------------
+                # GRADIENT BOOSTING
+                # ------------------------------------------------
+
+                models["Gradient Boosting"] = (
+                    GradientBoostingClassifier(
+                        n_estimators=
+                            100 + (50 * retrain_index),
+
+                        learning_rate=max(
+                            0.03,
+                            0.10 -
+                            (0.01 * (retrain_index - 1))
+                        ),
+
+                        max_depth=
+                            2 + (retrain_index % 3),
+
+                        random_state=
+                            300 + experiment_number
+                    )
+                )
+
+                # ------------------------------------------------
+                # SVM
+                # ------------------------------------------------
+
+                models["SVM"] = SVC(
+                    C=
+                        1.0 + (0.5 * retrain_index),
+
+                    probability=True,
+
+                    random_state=
+                        400 + experiment_number
+                )
+
+                # ------------------------------------------------
+                # KNN
+                # ------------------------------------------------
+
+                models["KNN"] = KNeighborsClassifier(
+                    n_neighbors=
+                        max(
+                            3,
+                            5 + (2 * retrain_index)
+                        )
                 )
 
             return models
 
-        # --------------------------------------------------------
+        # ========================================================
         # REGRESSION
-        # --------------------------------------------------------
+        # ========================================================
 
         models = {
 
@@ -160,13 +302,15 @@ class MLExperimentAgent:
             "Random Forest":
                 RandomForestRegressor(
                     n_estimators=200,
-                    random_state=42
+                    random_state=42,
+                    n_jobs=-1
                 ),
 
             "Extra Trees":
                 ExtraTreesRegressor(
                     n_estimators=200,
-                    random_state=42
+                    random_state=42,
+                    n_jobs=-1
                 ),
 
             "Gradient Boosting":
@@ -178,15 +322,88 @@ class MLExperimentAgent:
                 SVR()
         }
 
-        # --------------------------------------------------------
-        # SECOND EXPERIMENT
-        # --------------------------------------------------------
+        # ========================================================
+        # RETRAINING FOR REGRESSION
+        # ========================================================
 
         if experiment_number > 1:
 
+            retrain_index = experiment_number - 1
+
+            # ----------------------------------------------------
+            # RANDOM FOREST
+            # ----------------------------------------------------
+
             models["Random Forest"] = RandomForestRegressor(
-                n_estimators=500,
-                random_state=experiment_number
+                n_estimators=
+                    500 + (100 * (retrain_index - 1)),
+
+                max_depth=
+                    None
+                    if retrain_index % 2
+                    else 20,
+
+                min_samples_leaf=
+                    1 + ((retrain_index - 1) % 3),
+
+                random_state=
+                    100 + experiment_number,
+
+                n_jobs=-1
+            )
+
+            # ----------------------------------------------------
+            # EXTRA TREES
+            # ----------------------------------------------------
+
+            models["Extra Trees"] = ExtraTreesRegressor(
+                n_estimators=
+                    500 + (100 * (retrain_index - 1)),
+
+                max_depth=
+                    None
+                    if retrain_index % 2
+                    else 20,
+
+                min_samples_leaf=
+                    1 + ((retrain_index - 1) % 3),
+
+                random_state=
+                    200 + experiment_number,
+
+                n_jobs=-1
+            )
+
+            # ----------------------------------------------------
+            # GRADIENT BOOSTING
+            # ----------------------------------------------------
+
+            models["Gradient Boosting"] = (
+                GradientBoostingRegressor(
+                    n_estimators=
+                        100 + (50 * retrain_index),
+
+                    learning_rate=max(
+                        0.03,
+                        0.10 -
+                        (0.01 * (retrain_index - 1))
+                    ),
+
+                    max_depth=
+                        2 + (retrain_index % 3),
+
+                    random_state=
+                        300 + experiment_number
+                )
+            )
+
+            # ----------------------------------------------------
+            # SVR
+            # ----------------------------------------------------
+
+            models["SVR"] = SVR(
+                C=
+                    1.0 + (0.5 * retrain_index)
             )
 
         return models
@@ -204,9 +421,9 @@ class MLExperimentAgent:
         print("AUTOXLAB - ML EXPERIMENT AGENT")
         print("=" * 60)
 
-        # --------------------------------------------------------
+        # ========================================================
         # VALIDATE STATE
-        # --------------------------------------------------------
+        # ========================================================
 
         cleaned_dataset_path = state.get(
             "cleaned_dataset_path"
@@ -217,43 +434,54 @@ class MLExperimentAgent:
         )
 
         if not cleaned_dataset_path:
+
             raise ValueError(
                 "cleaned_dataset_path is missing from WorkflowState."
             )
 
         if not problem_type:
+
             raise ValueError(
                 "problem_type is missing from WorkflowState."
             )
 
-        # --------------------------------------------------------
+        # ========================================================
         # EXPERIMENT NUMBER
-        # --------------------------------------------------------
+        # ========================================================
 
-        experiment_number = state.get(
-            "experiment_number",
-            1
+        experiment_number = int(
+            state.get(
+                "experiment_number",
+                1
+            ) or 1
         )
 
         print(
             f"Experiment Number: {experiment_number}"
         )
 
+        if experiment_number > 1:
+
+            print(
+                f"RETRAINING RUN "
+                f"#{experiment_number - 1}"
+            )
+
         print(
             f"Problem Type: {problem_type}"
         )
 
-        # --------------------------------------------------------
+        # ========================================================
         # FIND ARTIFACT DIRECTORY
-        # --------------------------------------------------------
+        # ========================================================
 
         run_dir = os.path.dirname(
             cleaned_dataset_path
         )
 
-        # --------------------------------------------------------
+        # ========================================================
         # LOAD TRAINING DATA
-        # --------------------------------------------------------
+        # ========================================================
 
         X_train_path = os.path.join(
             run_dir,
@@ -275,29 +503,41 @@ class MLExperimentAgent:
             "y_test.npy"
         )
 
+        # ========================================================
+        # CHECK FILES
+        # ========================================================
+
         if not os.path.exists(X_train_path):
+
             raise FileNotFoundError(
-                f"Training features not found: {X_train_path}"
+                f"Training features not found: "
+                f"{X_train_path}"
             )
 
         if not os.path.exists(X_test_path):
+
             raise FileNotFoundError(
-                f"Testing features not found: {X_test_path}"
+                f"Testing features not found: "
+                f"{X_test_path}"
             )
 
         if not os.path.exists(y_train_path):
+
             raise FileNotFoundError(
-                f"Training target not found: {y_train_path}"
+                f"Training target not found: "
+                f"{y_train_path}"
             )
 
         if not os.path.exists(y_test_path):
+
             raise FileNotFoundError(
-                f"Testing target not found: {y_test_path}"
+                f"Testing target not found: "
+                f"{y_test_path}"
             )
 
-        # --------------------------------------------------------
+        # ========================================================
         # LOAD DATA
-        # --------------------------------------------------------
+        # ========================================================
 
         X_train = np.load(
             X_train_path
@@ -333,9 +573,9 @@ class MLExperimentAgent:
             f"y_test shape: {y_test.shape}"
         )
 
-        # --------------------------------------------------------
+        # ========================================================
         # GET MODELS
-        # --------------------------------------------------------
+        # ========================================================
 
         models = self.get_models(
             problem_type,
@@ -346,9 +586,9 @@ class MLExperimentAgent:
             f"\nModels to test: {len(models)}"
         )
 
-        # --------------------------------------------------------
+        # ========================================================
         # EXPERIMENT VARIABLES
-        # --------------------------------------------------------
+        # ========================================================
 
         results = []
 
@@ -358,40 +598,41 @@ class MLExperimentAgent:
 
         best_score = -float("inf")
 
-        # --------------------------------------------------------
+        # ========================================================
         # TRAIN EVERY MODEL
-        # --------------------------------------------------------
+        # ========================================================
 
         for name, model in models.items():
 
             print("\n" + "-" * 50)
 
             print(
-                f"Training: {name}"
+                f"Experiment {experiment_number} "
+                f"- Training: {name}"
             )
 
             try:
 
-                # --------------------------------------------
+                # ------------------------------------------------
                 # TRAIN
-                # --------------------------------------------
+                # ------------------------------------------------
 
                 model.fit(
                     X_train,
                     y_train
                 )
 
-                # --------------------------------------------
+                # ------------------------------------------------
                 # PREDICT
-                # --------------------------------------------
+                # ------------------------------------------------
 
                 predictions = model.predict(
                     X_test
                 )
 
-                # ==================================================
+                # =================================================
                 # CLASSIFICATION
-                # ==================================================
+                # =================================================
 
                 if problem_type == "classification":
 
@@ -423,7 +664,11 @@ class MLExperimentAgent:
 
                     result = {
 
-                        "model": name,
+                        "experiment":
+                            experiment_number,
+
+                        "model":
+                            name,
 
                         "accuracy":
                             float(accuracy),
@@ -439,11 +684,12 @@ class MLExperimentAgent:
                     }
 
                     # F1 is used for model comparison
+
                     score = f1
 
-                    # ----------------------------------------
+                    # ------------------------------------------------
                     # ROC-AUC
-                    # ----------------------------------------
+                    # ------------------------------------------------
 
                     if hasattr(
                         model,
@@ -459,7 +705,9 @@ class MLExperimentAgent:
                             )
 
                             if len(
-                                np.unique(y_test)
+                                np.unique(
+                                    y_test
+                                )
                             ) == 2:
 
                                 auc = roc_auc_score(
@@ -467,16 +715,19 @@ class MLExperimentAgent:
                                     probabilities[:, 1]
                                 )
 
-                                result["roc_auc"] = float(
+                                result[
+                                    "roc_auc"
+                                ] = float(
                                     auc
                                 )
 
                         except Exception:
+
                             pass
 
-                # ==================================================
+                # =================================================
                 # REGRESSION
-                # ==================================================
+                # =================================================
 
                 else:
 
@@ -499,7 +750,11 @@ class MLExperimentAgent:
 
                     result = {
 
-                        "model": name,
+                        "experiment":
+                            experiment_number,
+
+                        "model":
+                            name,
 
                         "mae":
                             float(mae),
@@ -512,11 +767,12 @@ class MLExperimentAgent:
                     }
 
                     # R2 is used for model comparison
+
                     score = r2
 
-                # ------------------------------------------------
+                # =================================================
                 # SAVE RESULT
-                # ------------------------------------------------
+                # =================================================
 
                 results.append(
                     result
@@ -526,9 +782,9 @@ class MLExperimentAgent:
                     f"Score: {score:.4f}"
                 )
 
-                # ------------------------------------------------
+                # =================================================
                 # CHECK BEST MODEL
-                # ------------------------------------------------
+                # =================================================
 
                 if score > best_score:
 
@@ -550,14 +806,19 @@ class MLExperimentAgent:
 
                 results.append({
 
-                    "model": name,
+                    "experiment":
+                        experiment_number,
 
-                    "error": str(exc)
+                    "model":
+                        name,
+
+                    "error":
+                        str(exc)
                 })
 
-        # --------------------------------------------------------
+        # ========================================================
         # CHECK WHETHER ANY MODEL WORKED
-        # --------------------------------------------------------
+        # ========================================================
 
         if best_model is None:
 
@@ -575,13 +836,14 @@ class MLExperimentAgent:
             f"BEST SCORE: {best_score:.4f}"
         )
 
-        # --------------------------------------------------------
+        # ========================================================
         # SAVE BEST MODEL
-        # --------------------------------------------------------
+        # ========================================================
 
         best_model_path = os.path.join(
             run_dir,
-            "best_model.joblib"
+            f"best_model_experiment_"
+            f"{experiment_number}.joblib"
         )
 
         joblib.dump(
@@ -594,9 +856,9 @@ class MLExperimentAgent:
             f"{best_model_path}"
         )
 
-        # --------------------------------------------------------
+        # ========================================================
         # BEST MODEL PREDICTIONS
-        # --------------------------------------------------------
+        # ========================================================
 
         predictions = best_model.predict(
             X_test
@@ -608,11 +870,14 @@ class MLExperimentAgent:
 
         evaluation_image_path = os.path.join(
             run_dir,
-            "evaluation.png"
+            f"evaluation_experiment_"
+            f"{experiment_number}.png"
         )
 
         print("\n" + "=" * 60)
-        print("GENERATING EVALUATION VISUALIZATION")
+        print(
+            "GENERATING EVALUATION VISUALIZATION"
+        )
         print("=" * 60)
 
         try:
@@ -632,10 +897,14 @@ class MLExperimentAgent:
                     predictions
                 )
 
-                plt.imshow(cm)
+                plt.imshow(
+                    cm
+                )
 
                 plt.title(
-                    f"Confusion Matrix - {best_model_name}"
+                    f"Confusion Matrix - "
+                    f"{best_model_name} "
+                    f"(Experiment {experiment_number})"
                 )
 
                 plt.xlabel(
@@ -646,7 +915,8 @@ class MLExperimentAgent:
                     "Actual"
                 )
 
-                # Add numbers inside confusion matrix
+                # Add values inside matrix
+
                 for i in range(
                     cm.shape[0]
                 ):
@@ -658,7 +928,9 @@ class MLExperimentAgent:
                         plt.text(
                             j,
                             i,
-                            str(cm[i, j]),
+                            str(
+                                cm[i, j]
+                            ),
                             ha="center",
                             va="center"
                         )
@@ -678,6 +950,7 @@ class MLExperimentAgent:
                 )
 
                 # Perfect prediction line
+
                 minimum = min(
                     np.min(y_test),
                     np.min(predictions)
@@ -703,7 +976,9 @@ class MLExperimentAgent:
                 )
 
                 plt.title(
-                    f"Actual vs Predicted - {best_model_name}"
+                    f"Actual vs Predicted - "
+                    f"{best_model_name} "
+                    f"(Experiment {experiment_number})"
                 )
 
             plt.tight_layout()
@@ -733,11 +1008,15 @@ class MLExperimentAgent:
 
             evaluation_image_path = ""
 
-        # --------------------------------------------------------
+        # ========================================================
         # FINAL METRICS
-        # --------------------------------------------------------
+        # ========================================================
 
         metrics = {}
+
+        # ========================================================
+        # CLASSIFICATION METRICS
+        # ========================================================
 
         if problem_type == "classification":
 
@@ -782,14 +1061,19 @@ class MLExperimentAgent:
                     )
             }
 
-            # ROC-AUC for binary classification
+            # ====================================================
+            # ROC-AUC
+            # ====================================================
+
             if (
                 hasattr(
                     best_model,
                     "predict_proba"
                 )
                 and len(
-                    np.unique(y_test)
+                    np.unique(
+                        y_test
+                    )
                 ) == 2
             ):
 
@@ -809,7 +1093,12 @@ class MLExperimentAgent:
                     )
 
                 except Exception:
+
                     pass
+
+        # ========================================================
+        # REGRESSION METRICS
+        # ========================================================
 
         else:
 
@@ -842,42 +1131,58 @@ class MLExperimentAgent:
                     )
             }
 
-        # --------------------------------------------------------
-        # GENERATE MODEL RECOMMENDATION
-        # --------------------------------------------------------
+        # ========================================================
+        # MODEL RECOMMENDATION
+        # ========================================================
 
         if best_score >= 0.90:
 
             recommendation = (
-                "The model achieved excellent performance "
-                "and may be suitable for further validation."
+                "The model achieved excellent "
+                "performance and may be suitable "
+                "for further validation."
             )
 
         elif best_score >= 0.80:
 
             recommendation = (
-                "The model achieved acceptable performance. "
-                "Validate it on additional unseen data before deployment."
+                "The model achieved acceptable "
+                "performance. Validate it on "
+                "additional unseen data before deployment."
             )
 
         else:
 
             recommendation = (
-                "The model performance is below the required threshold. "
-                "Further experimentation is recommended."
+                "The model performance is below "
+                "the required threshold. Further "
+                "experimentation is recommended."
             )
 
-        # --------------------------------------------------------
+        # ========================================================
         # GENERATE AI ANALYSIS
-        # --------------------------------------------------------
+        # ========================================================
 
         llm_state = {
             **state,
-            "best_model_name": best_model_name,
-            "best_score": float(best_score),
-            "metrics": metrics,
-            "recommendation": recommendation,
-            "evaluation_image_path": evaluation_image_path
+
+            "experiment_number":
+                experiment_number,
+
+            "best_model_name":
+                best_model_name,
+
+            "best_score":
+                float(best_score),
+
+            "metrics":
+                metrics,
+
+            "recommendation":
+                recommendation,
+
+            "evaluation_image_path":
+                evaluation_image_path
         }
 
         try:
@@ -886,31 +1191,52 @@ class MLExperimentAgent:
                 llm_state
             )
 
+            print("\n" + "=" * 60)
+            print(
+                "AI ANALYSIS GENERATED SUCCESSFULLY"
+            )
             print("=" * 60)
-            print("AI ANALYSIS GENERATED SUCCESSFULLY")
-            print(llm_analysis)
+
+            print(
+                llm_analysis
+            )
+
             print("=" * 60)
 
         except Exception as e:
 
-            print("=" * 60)
+            print("\n" + "=" * 60)
             print("LLM ERROR:")
-            print(type(e).__name__)
-            print(str(e))
+            print(
+                type(e).__name__
+            )
+            print(
+                str(e)
+            )
             print("=" * 60)
 
             llm_analysis = (
                 f"LLM analysis failed: "
-                f"{type(e).__name__}: {str(e)}"
+                f"{type(e).__name__}: "
+                f"{str(e)}"
             )
 
-        # --------------------------------------------------------
-        # RETURN LANGGRAPH STATE UPDATE
-        # --------------------------------------------------------
+        # ========================================================
+        # FINAL STATE UPDATE
+        # ========================================================
 
         return {
 
-            "model_results": results,
+            # ----------------------------------------------------
+            # MODEL RESULTS
+            # ----------------------------------------------------
+
+            "model_results":
+                results,
+
+            # ----------------------------------------------------
+            # BEST MODEL
+            # ----------------------------------------------------
 
             "best_model_name":
                 best_model_name,
@@ -921,49 +1247,116 @@ class MLExperimentAgent:
             "best_model_path":
                 best_model_path,
 
-            # IMPORTANT:
-            # Evaluation image path is returned to WorkflowState
+            # ----------------------------------------------------
+            # EVALUATION IMAGE
+            # ----------------------------------------------------
+
             "evaluation_image_path":
                 evaluation_image_path,
 
-            # Extra names for compatibility with report generator
             "evaluation_plot_path":
                 evaluation_image_path,
 
             "evaluation_image":
                 evaluation_image_path,
 
+            # ----------------------------------------------------
+            # METRICS
+            # ----------------------------------------------------
+
             "metrics":
                 metrics,
+
+            # ----------------------------------------------------
+            # RECOMMENDATION
+            # ----------------------------------------------------
 
             "recommendation":
                 recommendation,
 
+            # ----------------------------------------------------
+            # AI ANALYSIS
+            # ----------------------------------------------------
+
             "llm_analysis":
                 llm_analysis,
+
+            # ----------------------------------------------------
+            # EXPERIMENT / RETRAINING INFORMATION
+            # ----------------------------------------------------
+
+            "experiment_number":
+                experiment_number,
+
+            "retrain_count":
+                max(
+                    0,
+                    experiment_number - 1
+                ),
+
+            "next_experiment_number":
+                experiment_number + 1,
+
+            "approval_status":
+                "pending",
+
+            "retrain_required":
+                False,
+
+            # ----------------------------------------------------
+            # STATUS
+            # ----------------------------------------------------
 
             "status":
                 "ml_experiment_completed",
 
+            # ----------------------------------------------------
+            # MESSAGES
+            # ----------------------------------------------------
+
             "messages": [
 
-                f"Experiment {experiment_number} completed.",
+                (
+                    f"Experiment "
+                    f"{experiment_number} completed."
+                ),
 
-                f"Tested {len(models)} models.",
+                (
+                    f"Tested "
+                    f"{len(models)} models."
+                ),
 
-                f"Best model: {best_model_name}",
+                (
+                    f"Best model: "
+                    f"{best_model_name}"
+                ),
 
-                f"Best score: {best_score:.4f}",
+                (
+                    f"Best score: "
+                    f"{best_score:.4f}"
+                ),
 
-                "Best model saved successfully.",
+                (
+                    "Best model saved successfully."
+                ),
 
                 (
                     f"Evaluation image saved: "
                     f"{evaluation_image_path}"
+                ),
+
+                (
+                    f"Retraining count: "
+                    f"{max(0, experiment_number - 1)}"
                 )
             ],
 
-            "error": ""
+            # ----------------------------------------------------
+            # ERROR
+            # ----------------------------------------------------
+
+            "error":
+                ""
         }
 
 
@@ -975,19 +1368,34 @@ def generate_ai_analysis(
     state
 ):
 
+    # ============================================================
+    # GET PROVIDER
+    # ============================================================
+
     provider = state.get(
         "llm_provider",
         "openai"
     )
 
+    # ============================================================
+    # GET LLM
+    # ============================================================
+
     llm = get_llm(
         provider
     )
+
+    # ============================================================
+    # PROMPT
+    # ============================================================
 
     prompt = f"""
 You are an AI data science assistant.
 
 Analyze the results of this machine learning experiment.
+
+Experiment number:
+{state.get("experiment_number", 1)}
 
 Problem type:
 {state.get("problem_type", "unknown")}
@@ -1004,16 +1412,34 @@ Metrics:
 Recommendation:
 {state.get("recommendation", "")}
 
-Give a short, clear explanation of:
+Explain clearly:
 
-1. Which model performed best
-2. How good the score is
-3. What the metrics mean
-4. Whether the model should be considered for further validation
+1. Which model performed best.
+
+2. How good the score is.
+
+3. What the metrics mean.
+
+4. Whether the model should be considered
+   for further validation.
+
+5. If this is a retraining experiment,
+   mention that the model was retrained
+   after rejection of the previous experiment.
+
+Keep the explanation short and easy to understand.
 """
+
+    # ============================================================
+    # CALL LLM
+    # ============================================================
 
     response = llm.invoke(
         prompt
     )
+
+    # ============================================================
+    # RETURN RESPONSE
+    # ============================================================
 
     return response.content

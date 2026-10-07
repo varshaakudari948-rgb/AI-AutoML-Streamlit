@@ -66,31 +66,62 @@ def start_experiment(
     print("AUTOXLAB EXPERIMENT STARTED")
     print("=" * 60)
 
+    experiment_number = int(
+        state.get(
+            "experiment_number",
+            1
+        ) or 1
+    )
+
+    retrain_count = int(
+        state.get(
+            "retrain_count",
+            0
+        ) or 0
+    )
+
+    max_retrains = int(
+        state.get(
+            "max_retrains",
+            MAX_RETRAINS
+        ) or MAX_RETRAINS
+    )
+
+    minimum_score = float(
+        state.get(
+            "minimum_score",
+            MIN_SCORE
+        ) or MIN_SCORE
+    )
+
+    print(
+        f"Experiment Number: "
+        f"{experiment_number}"
+    )
+
+    print(
+        f"Retrain Count: "
+        f"{retrain_count}/{max_retrains}"
+    )
+
+    print(
+        f"Minimum Score: "
+        f"{minimum_score:.4f}"
+    )
+
     return {
 
         "experiment_number":
-            state.get(
-                "experiment_number",
-                1
-            ),
+            experiment_number,
 
         "retrain_count":
-            state.get(
-                "retrain_count",
-                0
-            ),
+            retrain_count,
 
         "max_retrains":
-            state.get(
-                "max_retrains",
-                MAX_RETRAINS
-            ),
+            max_retrains,
 
         "minimum_score":
-            state.get(
-                "minimum_score",
-                MIN_SCORE
-            ),
+            minimum_score,
 
         "status":
             "experiment_started"
@@ -98,7 +129,7 @@ def start_experiment(
 
 
 # ============================================================
-# CONDITIONAL EDGE
+# AUTOMATIC RETRAIN DECISION
 # ============================================================
 
 def decide_retraining(
@@ -108,28 +139,51 @@ def decide_retraining(
     "continue"
 ]:
 
-    score = state.get(
-        "best_score",
-        0.0
+    score = float(
+        state.get(
+            "best_score",
+            0.0
+        ) or 0.0
     )
 
-    retrain_count = state.get(
-        "retrain_count",
-        0
+    retrain_count = int(
+        state.get(
+            "retrain_count",
+            0
+        ) or 0
     )
 
-    max_retrains = state.get(
-        "max_retrains",
-        MAX_RETRAINS
+    max_retrains = int(
+        state.get(
+            "max_retrains",
+            MAX_RETRAINS
+        ) or MAX_RETRAINS
     )
 
-    minimum_score = state.get(
-        "minimum_score",
-        MIN_SCORE
+    minimum_score = float(
+        state.get(
+            "minimum_score",
+            MIN_SCORE
+        ) or MIN_SCORE
+    )
+
+    experiment_number = int(
+        state.get(
+            "experiment_number",
+            1
+        ) or 1
+    )
+
+    print("\n" + "-" * 60)
+
+    print(
+        f"[AutoXLab] Experiment: "
+        f"{experiment_number}"
     )
 
     print(
-        f"\n[AutoXLab] Model score: {score:.4f}"
+        f"[AutoXLab] Model score: "
+        f"{score:.4f}"
     )
 
     print(
@@ -142,9 +196,9 @@ def decide_retraining(
         f"{retrain_count}/{max_retrains}"
     )
 
-    # --------------------------------------------------------
-    # SCORE ACCEPTABLE
-    # --------------------------------------------------------
+    # ========================================================
+    # SCORE IS ACCEPTABLE
+    # ========================================================
 
     if score >= minimum_score:
 
@@ -152,11 +206,15 @@ def decide_retraining(
             "[AutoXLab] Score acceptable."
         )
 
+        print(
+            "[AutoXLab] Continuing to explainability."
+        )
+
         return "continue"
 
-    # --------------------------------------------------------
-    # RETRAIN
-    # --------------------------------------------------------
+    # ========================================================
+    # SCORE IS LOW AND RETRAINING IS AVAILABLE
+    # ========================================================
 
     if retrain_count < max_retrains:
 
@@ -165,50 +223,158 @@ def decide_retraining(
         )
 
         print(
-            "[AutoXLab] Starting retraining."
+            "[AutoXLab] Automatic retraining required."
         )
 
         return "retrain"
 
-    # --------------------------------------------------------
-    # MAX RETRAINING REACHED
-    # --------------------------------------------------------
+    # ========================================================
+    # MAXIMUM RETRAINING REACHED
+    # ========================================================
 
     print(
         "[AutoXLab] Maximum retraining reached."
+    )
+
+    print(
+        "[AutoXLab] Continuing with current best model."
     )
 
     return "continue"
 
 
 # ============================================================
-# RETRAIN NODE
+# PREPARE RETRAINING
 # ============================================================
 
 def prepare_retraining(
     state: WorkflowState
 ) -> dict:
 
-    current_retrain_count = state.get(
-        "retrain_count",
-        0
+    current_retrain_count = int(
+        state.get(
+            "retrain_count",
+            0
+        ) or 0
     )
 
-    current_experiment = state.get(
-        "experiment_number",
-        1
+    current_experiment = int(
+        state.get(
+            "experiment_number",
+            1
+        ) or 1
     )
+
+    max_retrains = int(
+        state.get(
+            "max_retrains",
+            MAX_RETRAINS
+        ) or MAX_RETRAINS
+    )
+
+    # ========================================================
+    # SAFETY CHECK
+    # ========================================================
+
+    if current_retrain_count >= max_retrains:
+
+        print("\n" + "=" * 60)
+        print("MAXIMUM RETRAINING LIMIT REACHED")
+        print("=" * 60)
+
+        return {
+
+            "status":
+                "max_retraining_reached",
+
+            "retrain_required":
+                False,
+
+            "approval_status":
+                "rejected"
+        }
+
+    # ========================================================
+    # INCREMENT COUNTERS
+    # ========================================================
+
+    next_retrain_count = (
+        current_retrain_count + 1
+    )
+
+    next_experiment = (
+        current_experiment + 1
+    )
+
+    print("\n" + "=" * 60)
+    print("AUTOXLAB - RETRAINING STARTED")
+    print("=" * 60)
+
+    print(
+        f"Previous Experiment: "
+        f"{current_experiment}"
+    )
+
+    print(
+        f"New Experiment: "
+        f"{next_experiment}"
+    )
+
+    print(
+        f"Retrain Count: "
+        f"{next_retrain_count}/{max_retrains}"
+    )
+
+    print(
+        "[AutoXLab] Previous model rejected "
+        "or score was below threshold."
+    )
+
+    print(
+        "[AutoXLab] Starting a fresh ML experiment."
+    )
+
+    # ========================================================
+    # RETURN UPDATED STATE
+    # ========================================================
 
     return {
 
+        # Increment retraining count
         "retrain_count":
-            current_retrain_count + 1,
+            next_retrain_count,
 
+        # Increment experiment number
         "experiment_number":
-            current_experiment + 1,
+            next_experiment,
+
+        # Mark retraining
+        "retrain_required":
+            True,
+
+        "retrain_reason":
+            "Previous model was rejected "
+            "or score was below threshold.",
 
         "status":
-            "retraining_started"
+            "retraining_started",
+
+        # Clear previous analysis
+        "llm_analysis":
+            "",
+
+        # Clear old approval
+        "human_approved":
+            False,
+
+        "approval_status":
+            "retraining",
+
+        "approval_message":
+            "",
+
+        "error":
+            ""
     }
 
 
@@ -220,40 +386,84 @@ def human_model_approval(
     state: WorkflowState
 ) -> dict:
 
+    experiment_number = int(
+        state.get(
+            "experiment_number",
+            1
+        ) or 1
+    )
+
+    retrain_count = int(
+        state.get(
+            "retrain_count",
+            0
+        ) or 0
+    )
+
+    max_retrains = int(
+        state.get(
+            "max_retrains",
+            MAX_RETRAINS
+        ) or MAX_RETRAINS
+    )
+
+    best_model_name = state.get(
+        "best_model_name",
+        "Unknown"
+    )
+
+    best_score = float(
+        state.get(
+            "best_score",
+            0.0
+        ) or 0.0
+    )
+
+    metrics = state.get(
+        "metrics",
+        {}
+    )
+
+    # ========================================================
+    # INTERRUPT FOR HUMAN
+    # ========================================================
+
     approval = interrupt({
 
         "type":
             "model_approval",
 
         "message":
-            "The autonomous pipeline has "
-            "finished model selection.",
+            (
+                "The autonomous pipeline has "
+                "finished model selection."
+            ),
+
+        "experiment_number":
+            experiment_number,
+
+        "retrain_count":
+            retrain_count,
+
+        "max_retrains":
+            max_retrains,
 
         "best_model":
-            state.get(
-                "best_model_name",
-                "Unknown"
-            ),
+            best_model_name,
 
         "score":
-            state.get(
-                "best_score",
-                0.0
-            ),
+            best_score,
 
         "metrics":
-            state.get(
-                "metrics",
-                {}
-            ),
+            metrics,
 
         "question":
             "Approve this model?"
     })
 
-    # --------------------------------------------------------
+    # ========================================================
     # CONVERT APPROVAL TO BOOLEAN
-    # --------------------------------------------------------
+    # ========================================================
 
     approved = False
 
@@ -275,30 +485,52 @@ def human_model_approval(
             approval
         )
 
-    # --------------------------------------------------------
-    # APPROVAL MESSAGE
-    # --------------------------------------------------------
+    # ========================================================
+    # HANDLE APPROVAL
+    # ========================================================
 
     if approved:
 
         message = (
-            "Human approved the final model."
+            "Human approved the model."
+        )
+
+        status = "approved"
+
+        print(
+            "\n[AutoXLab] "
+            "Human APPROVED model."
         )
 
     else:
 
         message = (
-            "Human rejected the final model."
+            "Human rejected the model."
         )
 
-    print(
-        f"\n[AutoXLab] {message}"
-    )
+        status = "rejected"
+
+        print(
+            "\n[AutoXLab] "
+            "Human REJECTED model."
+        )
+
+        print(
+            "[AutoXLab] "
+            "The workflow will go to retraining."
+        )
+
+    # ========================================================
+    # RETURN HUMAN DECISION
+    # ========================================================
 
     return {
 
         "human_approved":
             approved,
+
+        "approval_status":
+            status,
 
         "approval_message":
             message,
@@ -309,7 +541,127 @@ def human_model_approval(
 
 
 # ============================================================
-# FINALIZE NODE
+# ROUTE AFTER HUMAN APPROVAL
+# ============================================================
+
+def route_after_human_approval(
+    state: WorkflowState
+) -> Literal[
+    "retrain",
+    "finalize"
+]:
+
+    approved = bool(
+        state.get(
+            "human_approved",
+            False
+        )
+    )
+
+    retrain_count = int(
+        state.get(
+            "retrain_count",
+            0
+        ) or 0
+    )
+
+    max_retrains = int(
+        state.get(
+            "max_retrains",
+            MAX_RETRAINS
+        ) or MAX_RETRAINS
+    )
+
+    experiment_number = int(
+        state.get(
+            "experiment_number",
+            1
+        ) or 1
+    )
+
+    # ========================================================
+    # APPROVED
+    # ========================================================
+
+    if approved:
+
+        print("\n" + "=" * 60)
+
+        print(
+            "[AutoXLab] HUMAN APPROVAL = TRUE"
+        )
+
+        print(
+            "[AutoXLab] Model approved."
+        )
+
+        print(
+            "[AutoXLab] Going to finalization."
+        )
+
+        print("=" * 60)
+
+        return "finalize"
+
+    # ========================================================
+    # REJECTED + RETRAINING AVAILABLE
+    # ========================================================
+
+    if retrain_count < max_retrains:
+
+        print("\n" + "=" * 60)
+
+        print(
+            "[AutoXLab] HUMAN APPROVAL = FALSE"
+        )
+
+        print(
+            "[AutoXLab] Model rejected."
+        )
+
+        print(
+            f"[AutoXLab] Experiment "
+            f"{experiment_number} will be retrained."
+        )
+
+        print(
+            f"[AutoXLab] Retraining "
+            f"{retrain_count + 1}/{max_retrains}"
+        )
+
+        print(
+            "[AutoXLab] Routing to prepare_retraining."
+        )
+
+        print("=" * 60)
+
+        return "retrain"
+
+    # ========================================================
+    # REJECTED + NO RETRAINING LEFT
+    # ========================================================
+
+    print("\n" + "=" * 60)
+
+    print(
+        "[AutoXLab] Model rejected."
+    )
+
+    print(
+        "[AutoXLab] Maximum retraining limit reached."
+    )
+
+    print(
+        "[AutoXLab] Finalizing without approval."
+    )
+
+    print("=" * 60)
+
+    return "finalize"
+
+
+# ============================================================
+# FINALIZE EXPERIMENT
 # ============================================================
 
 def finalize_experiment(
@@ -320,24 +672,87 @@ def finalize_experiment(
     print("AUTOXLAB EXPERIMENT FINALIZED")
     print("=" * 60)
 
-    approved = state.get(
-        "human_approved",
-        False
+    approved = bool(
+        state.get(
+            "human_approved",
+            False
+        )
     )
+
+    experiment_number = int(
+        state.get(
+            "experiment_number",
+            1
+        ) or 1
+    )
+
+    retrain_count = int(
+        state.get(
+            "retrain_count",
+            0
+        ) or 0
+    )
+
+    best_model_name = state.get(
+        "best_model_name",
+        "Unknown"
+    )
+
+    best_score = float(
+        state.get(
+            "best_score",
+            0.0
+        ) or 0.0
+    )
+
+    # ========================================================
+    # APPROVED
+    # ========================================================
 
     if approved:
 
         status = (
-            "Experiment finalized. "
-            "Final model approved."
+            f"Experiment {experiment_number} finalized. "
+            f"Final model approved."
         )
+
+        print(
+            f"[AutoXLab] Final model: "
+            f"{best_model_name}"
+        )
+
+        print(
+            f"[AutoXLab] Final score: "
+            f"{best_score:.4f}"
+        )
+
+        print(
+            "[AutoXLab] Human approved the model."
+        )
+
+    # ========================================================
+    # NOT APPROVED
+    # ========================================================
 
     else:
 
         status = (
-            "Experiment finalized. "
-            "Final model was not approved."
+            f"Experiment {experiment_number} finalized. "
+            f"Final model was not approved."
         )
+
+        print(
+            "[AutoXLab] Final model was not approved."
+        )
+
+    print(
+        f"[AutoXLab] Total retraining loops: "
+        f"{retrain_count}"
+    )
+
+    print(
+        "=" * 60
+    )
 
     return {
 
@@ -345,7 +760,28 @@ def finalize_experiment(
             status,
 
         "messages": [
-            status
+
+            status,
+
+            (
+                f"Completed experiment: "
+                f"{experiment_number}"
+            ),
+
+            (
+                f"Total retraining loops: "
+                f"{retrain_count}"
+            ),
+
+            (
+                f"Best model: "
+                f"{best_model_name}"
+            ),
+
+            (
+                f"Best score: "
+                f"{best_score:.4f}"
+            )
         ]
     }
 
@@ -425,7 +861,7 @@ builder.add_edge(
 
 
 # ============================================================
-# AGENT-TO-AGENT CONNECTIONS
+# NORMAL PIPELINE
 # ============================================================
 
 builder.add_edge(
@@ -445,7 +881,7 @@ builder.add_edge(
 
 
 # ============================================================
-# CONDITIONAL EDGE
+# ML EXPERIMENT → AUTOMATIC RETRAIN DECISION
 # ============================================================
 
 builder.add_conditional_edges(
@@ -466,7 +902,11 @@ builder.add_conditional_edges(
 
 
 # ============================================================
-# RETRAIN LOOP
+# RETRAINING LOOP
+#
+# prepare_retraining
+#       ↓
+# ML Experiment
 # ============================================================
 
 builder.add_edge(
@@ -514,14 +954,33 @@ builder.add_edge(
 
 
 # ============================================================
-# HUMAN APPROVAL → FINALIZE
+# HUMAN APPROVAL → CONDITIONAL ROUTING
+#
+# APPROVE
+#     ↓
+# FINALIZE
+#
+# REJECT
+#     ↓
+# PREPARE RETRAINING
+#     ↓
+# ML EXPERIMENT
 # ============================================================
 
-builder.add_edge(
+builder.add_conditional_edges(
 
     "human_approval",
 
-    "finalize"
+    route_after_human_approval,
+
+    {
+
+        "retrain":
+            "prepare_retraining",
+
+        "finalize":
+            "finalize"
+    }
 )
 
 
@@ -553,6 +1012,11 @@ graph = builder.compile(
 )
 
 
+# ============================================================
+# CONFIRMATION
+# ============================================================
+
 print(
-    "\n[AutoXLab] LangGraph workflow compiled successfully."
+    "\n[AutoXLab] "
+    "LangGraph workflow compiled successfully."
 )

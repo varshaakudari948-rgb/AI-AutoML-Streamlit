@@ -20,7 +20,6 @@ st.set_page_config(
 )
 
 
-
 # ============================================================
 # CSS
 # ============================================================
@@ -66,21 +65,57 @@ st.markdown(
 
 
 # ============================================================
+# SESSION STATE INITIALIZATION
+# ============================================================
+
+if "run_id" not in st.session_state:
+
+    st.session_state["run_id"] = None
+
+
+if "config" not in st.session_state:
+
+    st.session_state["config"] = None
+
+
+if "result" not in st.session_state:
+
+    st.session_state["result"] = None
+
+
+if "run_started" not in st.session_state:
+
+    st.session_state["run_started"] = False
+
+
+# ============================================================
 # SIDEBAR
 # ============================================================
 
-st.sidebar.header("Experiment Configuration")
+st.sidebar.header(
+    "Experiment Configuration"
+)
 
 
 uploaded_file = st.sidebar.file_uploader(
     "Upload Dataset",
-    type=["csv", "xlsx", "xls"]
+    type=[
+        "csv",
+        "xlsx",
+        "xls"
+    ]
 )
+
 
 llm_provider = st.sidebar.selectbox(
     "AI Reasoning Model",
-    ["openai", "gemini", "claude"]
+    [
+        "openai",
+        "gemini",
+        "claude"
+    ]
 )
+
 
 use_pca = st.sidebar.checkbox(
     "Enable dimensionality reduction",
@@ -112,56 +147,46 @@ max_retrains = st.sidebar.number_input(
 if uploaded_file:
 
     # --------------------------------------------------------
-    # CREATE RUN ID
+    # DATASET NAME
     # --------------------------------------------------------
 
-    run_id = str(uuid.uuid4())
-
-    run_dir = os.path.join(
-        "runs",
-        run_id
-    )
-
-    os.makedirs(
-        run_dir,
-        exist_ok=True
-    )
+    uploaded_name = uploaded_file.name
 
 
     # --------------------------------------------------------
-    # SAVE UPLOADED DATASET
+    # LOAD DATASET DIRECTLY FOR PREVIEW
     # --------------------------------------------------------
 
-    input_path = os.path.join(
-        run_dir,
-        uploaded_file.name
-    )
+    try:
 
-    with open(input_path, "wb") as file:
+        if uploaded_name.lower().endswith(".csv"):
 
-        file.write(
-            uploaded_file.getbuffer()
+            df = pd.read_csv(
+                uploaded_file
+            )
+
+        else:
+
+            df = pd.read_excel(
+                uploaded_file
+            )
+
+    except Exception as e:
+
+        st.error(
+            f"Could not read dataset: {str(e)}"
         )
 
-
-    # --------------------------------------------------------
-    # LOAD DATASET
-    # --------------------------------------------------------
-
-    if uploaded_file.name.lower().endswith(".csv"):
-
-        df = pd.read_csv(input_path)
-
-    else:
-
-        df = pd.read_excel(input_path)
+        st.stop()
 
 
     # ========================================================
     # DATASET PREVIEW
     # ========================================================
 
-    st.subheader("📊 Dataset Preview")
+    st.subheader(
+        "📊 Dataset Preview"
+    )
 
     st.dataframe(
         df.head(20),
@@ -189,9 +214,13 @@ if uploaded_file:
     # DATASET PROFILE
     # ========================================================
 
-    st.subheader("📋 Dataset Profile")
+    st.subheader(
+        "📋 Dataset Profile"
+    )
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(
+        4
+    )
 
 
     with col1:
@@ -237,7 +266,9 @@ if uploaded_file:
     # DATASET VISUALIZATION
     # ========================================================
 
-    st.subheader("📈 Dataset Visualization")
+    st.subheader(
+        "📈 Dataset Visualization"
+    )
 
 
     numeric_columns = (
@@ -271,13 +302,75 @@ if uploaded_file:
     # RUN WORKFLOW
     # ========================================================
 
-    if st.button(
+    run_experiment = st.button(
         "🚀 Run Autonomous Experiment",
         type="primary"
-    ):
+    )
+
+
+    if run_experiment:
 
         # ----------------------------------------------------
-        # LANGGRAPH INITIAL STATE
+        # CREATE A NEW RUN ID
+        # ----------------------------------------------------
+
+        run_id = str(
+            uuid.uuid4()
+        )
+
+        st.session_state[
+            "run_id"
+        ] = run_id
+
+
+        # ----------------------------------------------------
+        # CREATE RUN DIRECTORY
+        # ----------------------------------------------------
+
+        run_dir = os.path.join(
+            "runs",
+            run_id
+        )
+
+        os.makedirs(
+            run_dir,
+            exist_ok=True
+        )
+
+
+        # ----------------------------------------------------
+        # SAVE DATASET
+        # ----------------------------------------------------
+
+        input_path = os.path.join(
+            run_dir,
+            uploaded_name
+        )
+
+
+        try:
+
+            with open(
+                input_path,
+                "wb"
+            ) as file:
+
+                file.write(
+                    uploaded_file.getbuffer()
+                )
+
+        except Exception as e:
+
+            st.error(
+                f"Could not save dataset: "
+                f"{str(e)}"
+            )
+
+            st.stop()
+
+
+        # ----------------------------------------------------
+        # INITIAL LANGGRAPH STATE
         # ----------------------------------------------------
 
         initial_state = {
@@ -290,9 +383,9 @@ if uploaded_file:
 
             "run_id":
                 run_id,
-            
+
             "llm_provider":
-             llm_provider,
+                llm_provider,
 
             "use_pca":
                 use_pca,
@@ -301,13 +394,24 @@ if uploaded_file:
                 minimum_score,
 
             "max_retrains":
-                int(max_retrains),
+                int(
+                    max_retrains
+                ),
 
             "retrain_count":
                 0,
 
             "experiment_number":
                 1,
+
+            "human_approved":
+                False,
+
+            "approval_status":
+                "pending",
+
+            "retrain_required":
+                False,
 
             "messages":
                 [],
@@ -318,7 +422,7 @@ if uploaded_file:
 
 
         # ----------------------------------------------------
-        # LANGGRAPH CHECKPOINT CONFIG
+        # LANGGRAPH CHECKPOINT CONFIGURATION
         # ----------------------------------------------------
 
         config = {
@@ -329,6 +433,16 @@ if uploaded_file:
                     run_id
             }
         }
+
+
+        st.session_state[
+            "config"
+        ] = config
+
+
+        st.session_state[
+            "run_started"
+        ] = True
 
 
         # ----------------------------------------------------
@@ -347,18 +461,36 @@ if uploaded_file:
                 )
 
 
-                # Save state for next Streamlit rerun
-
-                st.session_state["run_id"] = run_id
-
-                st.session_state["config"] = config
-
-                st.session_state["result"] = result
+                st.session_state[
+                    "result"
+                ] = result
 
 
-                st.success(
-                    "Workflow execution completed."
+                # ------------------------------------------------
+                # CHECK WHETHER GRAPH IS WAITING FOR HUMAN
+                # ------------------------------------------------
+
+                interrupts = result.get(
+                    "__interrupt__"
                 )
+
+
+                if interrupts:
+
+                    st.info(
+                        "✅ Experiment completed "
+                        "and is waiting for human approval."
+                    )
+
+                else:
+
+                    st.success(
+                        "✅ Workflow execution completed."
+                    )
+
+
+                st.rerun()
+
 
             except Exception as e:
 
@@ -373,21 +505,84 @@ if uploaded_file:
 # RESULTS
 # ============================================================
 
-if "result" in st.session_state:
+result = st.session_state.get(
+    "result"
+)
 
-    result = st.session_state["result"]
 
-# ============================================================
-# AI ANALYSIS
-# ============================================================
-    st.subheader("🤖 AI Analysis")
+if result:
 
-    llm_analysis = result.get("llm_analysis", "")
+    # ========================================================
+    # EXPERIMENT INFORMATION
+    # ========================================================
+
+    experiment_number = int(
+        result.get(
+            "experiment_number",
+            1
+        ) or 1
+    )
+
+
+    retrain_count = int(
+        result.get(
+            "retrain_count",
+            0
+        ) or 0
+    )
+
+
+    max_retrain_value = int(
+        result.get(
+            "max_retrains",
+            max_retrains
+        ) or max_retrains
+    )
+
+
+    # ========================================================
+    # SHOW RETRAINING STATUS
+    # ========================================================
+
+    if experiment_number > 1:
+
+        st.success(
+            f"🔄 Retraining completed — "
+            f"Experiment {experiment_number}"
+        )
+
+        st.write(
+            f"Retraining loop: "
+            f"**{retrain_count}/{max_retrain_value}**"
+        )
+
+
+    # ========================================================
+    # AI ANALYSIS
+    # ========================================================
+
+    st.subheader(
+        "🤖 AI Analysis"
+    )
+
+
+    llm_analysis = result.get(
+        "llm_analysis",
+        ""
+    )
+
 
     if llm_analysis:
-        st.info(llm_analysis)
+
+        st.info(
+            llm_analysis
+        )
+
     else:
-        st.warning("No AI analysis was generated.")
+
+        st.warning(
+            "No AI analysis was generated."
+        )
 
 
     # ========================================================
@@ -401,10 +596,14 @@ if "result" in st.session_state:
 
     if interrupts:
 
-        interrupt_data = interrupts[
-            0
-        ].value
+        interrupt_data = (
+            interrupts[0].value
+        )
 
+
+        # ----------------------------------------------------
+        # DISPLAY APPROVAL MESSAGE
+        # ----------------------------------------------------
 
         st.warning(
             "⚠️ Human approval required"
@@ -416,40 +615,146 @@ if "result" in st.session_state:
         )
 
 
+        # ----------------------------------------------------
+        # EXPERIMENT NUMBER
+        # ----------------------------------------------------
+
+        interrupt_experiment = (
+            interrupt_data.get(
+                "experiment_number",
+                experiment_number
+            )
+            if isinstance(
+                interrupt_data,
+                dict
+            )
+            else experiment_number
+        )
+
+
+        # ----------------------------------------------------
+        # DISPLAY EXPERIMENT INFORMATION
+        # ----------------------------------------------------
+
+        st.write(
+            f"**Experiment:** "
+            f"{interrupt_experiment}"
+        )
+
+
         st.json(
             interrupt_data
         )
 
 
-        col1, col2 = st.columns(2)
+        # ----------------------------------------------------
+        # APPROVAL BUTTONS
+        # ----------------------------------------------------
+
+        col1, col2 = st.columns(
+            2
+        )
 
 
         with col1:
 
             approve = st.button(
-                "✅ Approve Model"
+                "✅ Approve Model",
+                key=(
+                    f"approve_"
+                    f"{experiment_number}"
+                )
             )
 
 
         with col2:
 
             reject = st.button(
-                "❌ Reject Model"
+                "❌ Reject Model",
+                key=(
+                    f"reject_"
+                    f"{experiment_number}"
+                )
             )
 
 
+        # ====================================================
+        # HANDLE HUMAN DECISION
+        # ====================================================
+
         if approve or reject:
 
-            approved = approve
-
-
-            config = st.session_state[
+            config = st.session_state.get(
                 "config"
-            ]
+            )
 
+
+            if config is None:
+
+                st.error(
+                    "Workflow configuration "
+                    "is missing."
+                )
+
+                st.stop()
+
+
+            # ------------------------------------------------
+            # APPROVE
+            # ------------------------------------------------
+
+            if approve:
+
+                approval_value = {
+
+                    "approved":
+                        True
+                }
+
+
+                spinner_text = (
+                    "✅ Model approved. "
+                    "Continuing workflow..."
+                )
+
+
+                status_message = (
+                    "Model approved successfully."
+                )
+
+
+            # ------------------------------------------------
+            # REJECT
+            # ------------------------------------------------
+
+            else:
+
+                approval_value = {
+
+                    "approved":
+                        False
+                }
+
+
+                spinner_text = (
+                    "🔄 Model rejected. "
+                    "Retraining the model "
+                    "and generating new results..."
+                )
+
+
+                status_message = (
+                    "Model rejected. "
+                    "Starting retraining..."
+                )
+
+
+            # ------------------------------------------------
+            # RESUME GRAPH
+            # ------------------------------------------------
 
             with st.spinner(
-                "Resuming workflow..."
+                spinner_text
             ):
 
                 try:
@@ -457,20 +762,45 @@ if "result" in st.session_state:
                     final_result = graph.invoke(
 
                         Command(
-                            resume={
-                                "approved":
-                                    approved
-                            }
+                            resume=
+                                approval_value
                         ),
 
                         config=config
                     )
 
 
+                    # ------------------------------------------------
+                    # SAVE NEW RESULT
+                    # ------------------------------------------------
+
                     st.session_state[
                         "result"
                     ] = final_result
 
+
+                    # ------------------------------------------------
+                    # SHOW TEMPORARY STATUS
+                    # ------------------------------------------------
+
+                    if reject:
+
+                        st.info(
+                            status_message
+                        )
+
+
+                    else:
+
+                        st.success(
+                            status_message
+                        )
+
+
+                    # ------------------------------------------------
+                    # IMPORTANT:
+                    # RERUN SO NEW RESULT IS DISPLAYED
+                    # ------------------------------------------------
 
                     st.rerun()
 
@@ -478,11 +808,16 @@ if "result" in st.session_state:
                 except Exception as e:
 
                     st.error(
-                        f"Failed to resume workflow: {str(e)}"
+                        "Failed to resume workflow: "
+                        f"{str(e)}"
                     )
 
                     st.exception(e)
 
+
+        # ----------------------------------------------------
+        # STOP HERE WHILE WAITING FOR HUMAN
+        # ----------------------------------------------------
 
         st.stop()
 
@@ -496,10 +831,24 @@ if "result" in st.session_state:
     )
 
 
-    col1, col2, col3, col4 = st.columns(4)
+    # ========================================================
+    # RESULT SUMMARY
+    # ========================================================
+
+    col1, col2, col3, col4, col5 = st.columns(
+        5
+    )
 
 
     with col1:
+
+        st.metric(
+            "Experiment",
+            experiment_number
+        )
+
+
+    with col2:
 
         st.metric(
             "Problem Type",
@@ -510,7 +859,7 @@ if "result" in st.session_state:
         )
 
 
-    with col2:
+    with col3:
 
         st.metric(
             "Best Model",
@@ -521,12 +870,13 @@ if "result" in st.session_state:
         )
 
 
-    with col3:
+    with col4:
 
         best_score = result.get(
             "best_score",
             0
         )
+
 
         st.metric(
             "Best Score",
@@ -534,19 +884,17 @@ if "result" in st.session_state:
         )
 
 
-    with col4:
+    with col5:
 
         st.metric(
             "Retraining",
-            result.get(
-                "retrain_count",
-                0
-            )
+            f"{retrain_count}/"
+            f"{max_retrain_value}"
         )
 
 
     # ========================================================
-    # METRICS
+    # MODEL METRICS
     # ========================================================
 
     st.subheader(
@@ -576,10 +924,32 @@ if "result" in st.session_state:
 
             with metric_columns[index]:
 
+                try:
+
+                    display_value = (
+                        f"{float(metric_value):.4f}"
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    display_value = str(
+                        metric_value
+                    )
+
+
                 st.metric(
                     metric_name.upper(),
-                    f"{metric_value:.4f}"
+                    display_value
                 )
+
+    else:
+
+        st.info(
+            "No model metrics available."
+        )
 
 
     # ========================================================
@@ -659,14 +1029,53 @@ if "result" in st.session_state:
     )
 
 
-    for path in visualization_paths:
+    # --------------------------------------------------------
+    # SHOW VISUALIZATION PATHS FROM OTHER AGENTS
+    # --------------------------------------------------------
 
-        if os.path.exists(path):
+    if visualization_paths:
 
-            st.image(
-                path,
-                use_container_width=True
-            )
+        for path in visualization_paths:
+
+            if (
+                path
+                and
+                os.path.exists(path)
+            ):
+
+                st.image(
+                    path,
+                    use_container_width=True
+                )
+
+
+    # --------------------------------------------------------
+    # ALSO SHOW ML EVALUATION IMAGE
+    # --------------------------------------------------------
+
+    evaluation_image_path = result.get(
+        "evaluation_image_path",
+        ""
+    )
+
+
+    if (
+        evaluation_image_path
+        and
+        os.path.exists(
+            evaluation_image_path
+        )
+    ):
+
+        st.image(
+            evaluation_image_path,
+            caption=(
+                f"Evaluation - "
+                f"Experiment "
+                f"{experiment_number}"
+            ),
+            use_container_width=True
+        )
 
 
     # ========================================================
@@ -693,14 +1102,16 @@ if "result" in st.session_state:
     )
 
 
-    # --------------------------------------------------------
-    # HTML
-    # --------------------------------------------------------
+    # ========================================================
+    # HTML REPORT
+    # ========================================================
 
     if (
         html_report
         and
-        os.path.exists(html_report)
+        os.path.exists(
+            html_report
+        )
     ):
 
         with open(
@@ -711,18 +1122,23 @@ if "result" in st.session_state:
             st.download_button(
                 "📊 Download HTML Report",
                 file,
-                file_name="autoxlab_report.html"
+                file_name=(
+                    "autoxlab_report.html"
+                ),
+                key="download_html_report"
             )
 
 
-    # --------------------------------------------------------
-    # PDF
-    # --------------------------------------------------------
+    # ========================================================
+    # PDF REPORT
+    # ========================================================
 
     if (
         pdf_report
         and
-        os.path.exists(pdf_report)
+        os.path.exists(
+            pdf_report
+        )
     ):
 
         with open(
@@ -733,18 +1149,23 @@ if "result" in st.session_state:
             st.download_button(
                 "📄 Download PDF Report",
                 file,
-                file_name="autoxlab_report.pdf"
+                file_name=(
+                    "autoxlab_report.pdf"
+                ),
+                key="download_pdf_report"
             )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # NOTEBOOK
-    # --------------------------------------------------------
+    # ========================================================
 
     if (
         notebook
         and
-        os.path.exists(notebook)
+        os.path.exists(
+            notebook
+        )
     ):
 
         with open(
@@ -755,7 +1176,10 @@ if "result" in st.session_state:
             st.download_button(
                 "📓 Download Notebook",
                 file,
-                file_name="autoxlab_experiment.ipynb"
+                file_name=(
+                    "autoxlab_experiment.ipynb"
+                ),
+                key="download_notebook"
             )
 
 
@@ -780,19 +1204,64 @@ if "result" in st.session_state:
     # HUMAN APPROVAL STATUS
     # ========================================================
 
-    if result.get(
+    human_approved = result.get(
         "human_approved"
-    ) is True:
+    )
+
+
+    if human_approved is True:
 
         st.success(
             "✅ Final model approved by human."
         )
 
 
-    elif result.get(
-        "human_approved"
-    ) is False:
+    elif (
+        human_approved is False
+        and
+        not interrupts
+        and
+        result.get("status") != "retraining"
+    ):
 
         st.error(
             "❌ Final model was rejected."
         )
+
+
+    # ========================================================
+    # EXPERIMENT STATUS
+    # ========================================================
+
+    st.subheader(
+        "📌 Experiment Status"
+    )
+
+
+    status = result.get(
+        "status",
+        "Unknown"
+    )
+
+
+    st.write(
+        f"**Status:** {status}"
+    )
+
+
+    st.write(
+        f"**Experiment number:** "
+        f"{experiment_number}"
+    )
+
+
+    st.write(
+        f"**Retraining loops used:** "
+        f"{retrain_count}"
+    )
+
+
+    st.write(
+        f"**Maximum retraining loops:** "
+        f"{max_retrain_value}"
+    )
